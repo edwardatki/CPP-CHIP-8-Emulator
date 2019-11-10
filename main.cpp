@@ -27,18 +27,19 @@ const unsigned char fontset [80] = {
 
 unsigned short pc;
 unsigned short index;
-unsigned char registers [16];
+unsigned char registers [0xF];
 
 unsigned char memory [4096];
 unsigned short stack [16];
 unsigned short sp;
-bool flag;
 
 bool display [64*32];
 bool keypad [16];
 
 unsigned char delay_timer;
 unsigned char sound_timer;
+
+bool drawFlag;
 
 sf::RenderWindow window(sf::VideoMode(64*SCALE, 32*SCALE), "CHIP-8");
 
@@ -70,7 +71,15 @@ void getInput () {
 }
 
 int waitInput () {
-    while (true) {
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
+                window.close();
+                exit(EXIT_SUCCESS);
+            }
+        }
+
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num0)) return 0x0;
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) return 0x1;
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) return 0x2;
@@ -88,6 +97,8 @@ int waitInput () {
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::E)) return 0xE;
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::F)) return 0xF;
     }
+
+    exit(EXIT_SUCCESS);
 }
 
 void beep () {
@@ -97,10 +108,12 @@ void beep () {
 void clearDisplay () {
     for(int i = 0; i < 64*32; ++i)
         display[i] = 0;
-    window.clear();
+    drawFlag = true;
 }
 
 void drawGraphics () {
+    window.clear();
+
     sf::RectangleShape rectangle(sf::Vector2f(SCALE, SCALE));
     rectangle.setFillColor(sf::Color::White);
     
@@ -116,17 +129,21 @@ void drawGraphics () {
     }
 
     window.display();
+    drawFlag = false;
 }
 
-void drawSprite (unsigned char x, unsigned char y, unsigned char pointer, unsigned char height) {
+void drawSprite (unsigned char x, unsigned char y, unsigned short pointer, unsigned char height) {
     printf("Draw sprite at %02x, %02x from %03x\n", x, y, pointer);
+    registers[0xF] = false;
     for (int j = 0; j < height; j++) {
         unsigned char row = memory[pointer + j];
         for (int i = 0; i < 8; i++) {
-            if (display[(x+i) + ((y+j)*64)]) flag = true;
-            display[(x+i) + ((y+j)*64)] ^= (row >> i) & 0x01;
+            if (display[(x+i) + ((y+j)*64)] ^ ((row >> (7-i)) & 1)) registers[0xF] = 1;
+            display[(x+i) + ((y+j)*64)] ^= (row >> (7-i)) & 1;
         }
     }
+
+    drawFlag = true;
 }
 
 void initialise () {
@@ -155,7 +172,7 @@ void loadFontset () {
         memory[i] = fontset[i];
 }
 
-void loadProgram ( const char * filename ) {
+void loadProgram ( const char *filename ) {
     FILE *fp;
     fp = fopen(filename, "r");
 
@@ -165,6 +182,7 @@ void loadProgram ( const char * filename ) {
     } else {
         int i = 0;
         while (!feof(fp)) {
+            printf("%03x\n", i);
             memory[i + 0x200] = fgetc(fp);
             i++;
         }
@@ -175,7 +193,7 @@ void loadProgram ( const char * filename ) {
 
 void emulate () {
     unsigned short opcode = (memoryRead(pc) << 8) | memoryRead(pc + 1);
-    printf("%04x: %04x\n", pc, opcode);
+    printf("%04x: %04x\tREG: %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, \tINDEX: %03x\n", pc, opcode, registers[0], registers[1], registers[2], registers[3], registers[4], registers[5], registers[6], registers[7], registers[8], registers[9], registers[10], registers[11], registers[12], registers[13], registers[14], registers[15], index);
 
     switch (opcode & 0xF000) {
         case 0x0000:
@@ -283,36 +301,36 @@ void emulate () {
 
                 // VX += VY
                 case 0x4:
-                    flag = (registers[(opcode & 0x0F00) >> 8] + registers[(opcode & 0x00F0) >> 4]) > 0xFF;
+                    registers[0xF] = (registers[(opcode & 0x0F00) >> 8] + registers[(opcode & 0x00F0) >> 4]) > 0xFF;
                     registers[(opcode & 0x0F00) >> 8] += registers[(opcode & 0x00F0) >> 4];
                     pc += 2;
                     break;
 
                 // VX -= VY
                 case 0x5:
-                    flag = !(registers[(opcode & 0x00F0) >> 4] > registers[(opcode & 0x0F00) >> 8]);
+                    registers[0xF] = !(registers[(opcode & 0x00F0) >> 4] > registers[(opcode & 0x0F00) >> 8]);
                     registers[(opcode & 0x0F00) >> 8] -= registers[(opcode & 0x00F0) >> 4];
                     pc += 2;
                     break;
 
                 // VX = VY >> 1
                 case 0x6:
-                    flag = registers[(opcode & 0x00F0) >> 4] & 0x01;
-                    registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x00F0) >> 4] >> 1;
+                    registers[0xF] = registers[(opcode & 0x0F00) >> 8] & 0x01;
+                    registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x0F00) >> 8] >> 1;
                     pc += 2;
                     break;
 
                 // VX = VY - VX
                 case 0x7:
-                    flag = !(registers[(opcode & 0x0F00) >> 8] > registers[(opcode & 0x00F0) >> 4]);
+                    registers[0xF] = !(registers[(opcode & 0x0F00) >> 8] > registers[(opcode & 0x00F0) >> 4]);
                     registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x0F00) >> 8] - registers[(opcode & 0x00F0) >> 4];
                     pc += 2;
                     break;
 
                 // VX = VY << 1
                 case 0xE:
-                    flag = (registers[(opcode & 0x00F0) >> 4] & 0x80) >> 8;
-                    registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x00F0) >> 4] << 1;
+                    registers[0xF] = (registers[(opcode & 0x00F0) >> 4] >> 7) & 0x01;
+                    registers[(opcode & 0x0F00) >> 8] = registers[(opcode & 0x0F00) >> 8] << 1;
                     pc += 2;
                     break;
                 
@@ -418,7 +436,7 @@ void emulate () {
 
                 // I += VX
                 case 0x001E:
-                    flag = (index + registers[(opcode & 0x0F00) >> 8]) > 0x0FFF;
+                    registers[0xF] = (index + registers[(opcode & 0x0F00) >> 8]) > 0x0FFF;
                     index += registers[(opcode & 0x0F00) >> 8];
                     pc += 2;
                     break;
@@ -440,7 +458,7 @@ void emulate () {
                 // Register dump
                 // Store registers V0 through VX to memory[I]
                 case 0x0055:
-                    for(int i = 0; i < ((opcode & 0x0F00) >> 8); i++)
+                    for(int i = 0; i <= ((opcode & 0x0F00) >> 8); i++)
                         memory[index + i] = registers[i];
                     index += ((opcode & 0x0F00) >> 8) + 1;
                     pc += 2;
@@ -449,7 +467,7 @@ void emulate () {
                 // Register load
                 // Load registers V0 through VX from memory[I]
                 case 0x0065:
-                    for(int i = 0; i < ((opcode & 0x0F00) >> 8); ++i)
+                    for(int i = 0; i <= ((opcode & 0x0F00) >> 8); ++i)
                         registers[i] = memory[index + i];
                     index += ((opcode & 0x0F00) >> 8) + 1;
                     pc += 2;
@@ -484,17 +502,21 @@ void emulate () {
 int main () {
     initialise();
     loadFontset();
-    loadProgram("ROMs/keypad.ch8");
+    loadProgram("ROMs/pong.ch8");
 
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed) window.close();
+            if (event.type == sf::Event::Closed) {
+                window.close();
+                exit(EXIT_SUCCESS);
+            }
         }
         
         getInput();
         emulate();
-        drawGraphics();
+
+        if (drawFlag) drawGraphics();
     }
 
     return EXIT_SUCCESS;
