@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 
 using namespace std;
 
+//#define DEBUG
 const int SCALE = 10;
 
 const unsigned char fontset [80] = {
@@ -102,7 +104,19 @@ int waitInput () {
 }
 
 void beep () {
+    #ifdef DEBUG
     printf("BEEP!\n");
+    #endif
+
+    sf::SoundBuffer buffer;
+    if (!buffer.loadFromFile("beep.wav")) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
+    }
+
+    sf::Sound sound;
+    sound.setBuffer(buffer);
+    sound.play();
 }
 
 void clearDisplay () {
@@ -133,7 +147,9 @@ void drawGraphics () {
 }
 
 void drawSprite (unsigned char x, unsigned char y, unsigned short pointer, unsigned char height) {
+    #ifdef DEBUG
     printf("Draw sprite at %02x, %02x from %03x\n", x, y, pointer);
+    #endif
     registers[0xF] = false;
     for (int j = 0; j < height; j++) {
         unsigned char row = memory[pointer + j];
@@ -182,7 +198,6 @@ void loadProgram ( const char *filename ) {
     } else {
         int i = 0;
         while (!feof(fp)) {
-            printf("%03x\n", i);
             memory[i + 0x200] = fgetc(fp);
             i++;
         }
@@ -193,7 +208,9 @@ void loadProgram ( const char *filename ) {
 
 void emulate () {
     unsigned short opcode = (memoryRead(pc) << 8) | memoryRead(pc + 1);
+    #ifdef DEBUG
     printf("%04x: %04x\tREG: %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x, \tINDEX: %03x\n", pc, opcode, registers[0], registers[1], registers[2], registers[3], registers[4], registers[5], registers[6], registers[7], registers[8], registers[9], registers[10], registers[11], registers[12], registers[13], registers[14], registers[15], index);
+    #endif
 
     switch (opcode & 0xF000) {
         case 0x0000:
@@ -378,7 +395,9 @@ void emulate () {
             switch (opcode & 0x00FF) {
                 // Skip if key stored in VX pressed
                 case 0x009E:
-                    printf("Check for key %02x", registers[(opcode & 0x0F00) >> 8]);
+                    #ifdef DEBUG
+                    printf("Check for key %02x\n", registers[(opcode & 0x0F00) >> 8]);
+                    #endif
                     if (keypad[registers[(opcode & 0x0F00) >> 8]]) {
                         pc += 4;
                     } else {
@@ -388,7 +407,9 @@ void emulate () {
 
                 // Skip if key stored in VX not pressed
                 case 0x00A1:
-                    printf("Check for key %02x", registers[(opcode & 0x0F00) >> 8]);
+                    #ifdef DEBUG
+                    printf("Check for key %02x\n", registers[(opcode & 0x0F00) >> 8]);
+                    #endif
                     if (!keypad[registers[(opcode & 0x0F00) >> 8]]) {
                         pc += 4;
                     } else {

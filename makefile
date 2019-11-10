@@ -3,7 +3,7 @@
 CC = g++
 
 CFLAGS = -c -Wall
-LDFLAGS = -Wall -lsfml-graphics -lsfml-window -lsfml-system
+LDFLAGS = -Wall -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
 
 SRC=$(wildcard *.cpp)
 OBJ=$(SRC:.cpp=.o)
